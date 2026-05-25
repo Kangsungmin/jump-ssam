@@ -38,5 +38,6 @@ htmlcov/
 .env
 .env.local
 
-# Claude
+# Claude / 로컬 전용 문서
 .claude/
+SPEC.md
