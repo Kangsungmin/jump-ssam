@@ -43,6 +43,9 @@ def main():
 
     base_provider = MediaPipeLandmarkProvider()
     persons: dict = {}
+    _frame_no = 0
+    _last_results = None
+    _last_track_results: list[TrackResult] = []
 
     # UI 상태 (dict 사용으로 콜백에서 변경 가능)
     ui = {"quit": False, "sens_idx": 1}
@@ -86,6 +89,8 @@ def main():
     current_cfg = initial_cfg_cls()
 
     print("줄넘기 분석 시작 — 버튼 또는 'r' 리셋 / 'q' 종료")
+    if config.PI5_MODE:
+        print(f"[Pi5 모드] pose_skip={config.PERF_POSE_SKIP}, scale={config.PERF_RESIZE_SCALE}")
 
     while not ui["quit"]:
         ret, frame = cap.read()
@@ -93,10 +98,29 @@ def main():
             break
 
         frame = cv2.flip(frame, 1)
-        results = pose_analyzer.process(frame)
+        _frame_no += 1
+
+        # 프레임 스킵: PERF_POSE_SKIP 마다 포즈 추정 실행
+        if _frame_no % config.PERF_POSE_SKIP == 0:
+            proc_frame = frame
+            if config.PERF_RESIZE_SCALE != 1.0:
+                h, w = frame.shape[:2]
+                proc_frame = cv2.resize(
+                    frame,
+                    (int(w * config.PERF_RESIZE_SCALE), int(h * config.PERF_RESIZE_SCALE)),
+                )
+            _last_results = pose_analyzer.process(proc_frame)
+
+        results = _last_results
+        if results is None:
+            cv2.imshow(win_name, frame)
+            cv2.waitKey(1)
+            continue
+
         pose_analyzer.draw_landmarks(frame, results)
 
-        track_results: list[TrackResult] = tracker.update(results)
+        track_results: list[TrackResult] = tracker.update(results, frame)
+        _last_track_results = track_results
         active_ids = {tr.person_id for tr in track_results}
 
         for pid in list(persons.keys()):
