@@ -1,10 +1,10 @@
 ---
-description: 개발 중 발생한 이슈를 GitHub에 생성한다. ai-jumprope 앱 이슈는 Kangsungmin/ai-jumprope에, ropemetrics 라이브러리 이슈(버그·API 개선·새 백엔드)는 Kangsungmin/ropemetrics에 생성한다.
+description: 개발 중 발생한 이슈를 GitHub에 생성한다. ai-jumprope 앱 이슈는 Kangsungmin/jump-ssam에, ropemetrics 라이브러리 이슈(버그·API 개선·새 백엔드)는 Kangsungmin/ropemetrics에 생성한다.
 ---
 
 ## 이슈 분류 기준
 
-**Kangsungmin/ai-jumprope** — 앱 레벨 이슈:
+**Kangsungmin/jump-ssam** — 앱 레벨 이슈:
 - HUD, 자세 분석, 오디오 BPM, 교사 대시보드
 - MediaPipe 연동 문제 (PoseAnalyzer, PoseResults)
 - Phase 기능 구현 태스크 (SPEC.md 기준)
@@ -32,7 +32,7 @@ description: 개발 중 발생한 이슈를 GitHub에 생성한다. ai-jumprope 
 ```bash
 # ai-jumprope 이슈
 gh issue create \
-  --repo Kangsungmin/ai-jumprope \
+  --repo Kangsungmin/jump-ssam \
   --title "<제목>" \
   --body "<내용>" \
   --label "<라벨>"

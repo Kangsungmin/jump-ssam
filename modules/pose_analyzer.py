@@ -35,12 +35,28 @@ POSE_CONNECTIONS = [
     (25, 27), (26, 28), (27, 29), (28, 30), (29, 31), (30, 32),
 ]
 
+# 인원별 스켈레톤 색상 (BGR)
+_PERSON_COLORS_BGR = [
+    (0, 200, 100),   # 초록
+    (0, 100, 255),   # 주황
+    (255, 50, 50),   # 파랑
+    (200, 0, 255),   # 보라
+    (0, 255, 255),   # 노랑
+    (255, 255, 0),   # 시안
+    (100, 255, 100), # 연두
+    (255, 100, 200), # 분홍
+]
+
 
 class PoseResults:
     def __init__(self, result: PoseLandmarkerResult):
         self._result = result
-        landmarks = result.pose_landmarks
-        self.pose_landmarks = landmarks[0] if landmarks else None
+        self.pose_landmarks_list = result.pose_landmarks  # list[list[NormalizedLandmark]]
+        self.pose_landmarks = self.pose_landmarks_list[0] if self.pose_landmarks_list else None
+
+    @property
+    def num_persons(self) -> int:
+        return len(self.pose_landmarks_list)
 
 
 class PoseAnalyzer:
@@ -58,6 +74,7 @@ class PoseAnalyzer:
             running_mode=mp_vision.RunningMode.VIDEO,
             min_pose_detection_confidence=config.POSE_CONFIDENCE,
             min_tracking_confidence=config.POSE_CONFIDENCE,
+            num_poses=config.MAX_TRACKED_PERSONS,
             output_segmentation_masks=False,
         )
         self._landmarker = mp_vision.PoseLandmarker.create_from_options(options)
@@ -71,30 +88,28 @@ class PoseAnalyzer:
         return PoseResults(result)
 
     def draw_landmarks(self, frame, results: PoseResults):
-        if results.pose_landmarks is None:
-            return
         h, w = frame.shape[:2]
-        lms = results.pose_landmarks
+        for pose_idx, lms in enumerate(results.pose_landmarks_list):
+            color = _PERSON_COLORS_BGR[pose_idx % len(_PERSON_COLORS_BGR)]
+            for start, end in POSE_CONNECTIONS:
+                if start >= len(lms) or end >= len(lms):
+                    continue
+                x1, y1 = int(lms[start].x * w), int(lms[start].y * h)
+                x2, y2 = int(lms[end].x * w), int(lms[end].y * h)
+                cv2.line(frame, (x1, y1), (x2, y2), color, 2)
+            for lm in lms:
+                cx, cy = int(lm.x * w), int(lm.y * h)
+                cv2.circle(frame, (cx, cy), 4, (255, 255, 255), -1)
+                cv2.circle(frame, (cx, cy), 4, color, 1)
 
-        for start, end in POSE_CONNECTIONS:
-            if start >= len(lms) or end >= len(lms):
-                continue
-            x1, y1 = int(lms[start].x * w), int(lms[start].y * h)
-            x2, y2 = int(lms[end].x * w), int(lms[end].y * h)
-            cv2.line(frame, (x1, y1), (x2, y2), (0, 200, 100), 2)
-
-        for lm in lms:
-            cx, cy = int(lm.x * w), int(lm.y * h)
-            cv2.circle(frame, (cx, cy), 4, (255, 255, 255), -1)
-            cv2.circle(frame, (cx, cy), 4, (0, 150, 255), 1)
-
-    def get_landmark(self, results: PoseResults, landmark_name: str):
-        if results.pose_landmarks is None:
+    def get_landmark(self, results: PoseResults, landmark_name: str, person_id: int = 0):
+        if person_id >= len(results.pose_landmarks_list):
             return None
+        lms = results.pose_landmarks_list[person_id]
         idx = LANDMARK_INDEX.get(landmark_name)
-        if idx is None or idx >= len(results.pose_landmarks):
+        if idx is None or idx >= len(lms):
             return None
-        lm = results.pose_landmarks[idx]
+        lm = lms[idx]
         return np.array([lm.x, lm.y, lm.z, lm.visibility if hasattr(lm, "visibility") else 1.0])
 
     def close(self):

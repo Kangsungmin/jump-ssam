@@ -22,8 +22,8 @@ def _angle_deg(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
 
 
 class PostureAnalyzer:
-    def analyze(self, pose_results, pose_analyzer) -> Optional[PostureReport]:
-        get = lambda name: pose_analyzer.get_landmark(pose_results, name)
+    def analyze(self, pose_results, pose_analyzer, person_id: int = 0) -> Optional[PostureReport]:
+        get = lambda name: pose_analyzer.get_landmark(pose_results, name, person_id)
 
         ls = get("LEFT_SHOULDER");  rs = get("RIGHT_SHOULDER")
         lh = get("LEFT_HIP");       rh = get("RIGHT_HIP")

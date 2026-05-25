@@ -4,10 +4,23 @@ import time
 import config
 from modules.pose_analyzer import PoseAnalyzer
 from modules.posture_analyzer import PostureAnalyzer
-from modules.display import draw_hud
+from modules.display import draw_hud, make_button_layout, ButtonLayout
+from modules.tracker import MultiPersonTracker, TrackResult
 from ropemetrics import JumpCounter, JumpCounterConfig, JumpEvent
 from ropemetrics.strategies import AnkleStrategy
-from modules.adapters.mediapipe import MediaPipeLandmarkProvider
+from modules.adapters.mediapipe import MediaPipeLandmarkProvider, BoundLandmarkProvider
+
+
+# 민감도 프리셋 순환 목록
+_SENS_PRESETS = [
+    ("느림", JumpCounterConfig.slow),
+    ("기본", JumpCounterConfig),
+    ("빠름", JumpCounterConfig.fast),
+]
+
+
+def _make_counter(cfg: JumpCounterConfig, on_jump) -> JumpCounter:
+    return JumpCounter(strategy=AnkleStrategy(cfg), config=cfg, on_jump=on_jump)
 
 
 def main():
@@ -21,65 +34,127 @@ def main():
 
     pose_analyzer    = PoseAnalyzer()
     posture_analyzer = PostureAnalyzer()
+    tracker = MultiPersonTracker(
+        max_miss_frames=config.TRACKER_MAX_MISS_FRAMES,
+        match_threshold=config.TRACKER_MATCH_THRESHOLD,
+        ghost_expire_frames=config.TRACKER_GHOST_EXPIRE_FRAMES,
+        ghost_match_threshold=config.TRACKER_GHOST_MATCH_THRESHOLD,
+    )
 
-    # ── 카운터 조립 ───────────────────────────────────────────────────────
-    # 전략·프로바이더·카운터를 독립적으로 교체 가능
-    # 예: AnkleStrategy → HipShoulderStrategy, JumpCounterConfig() → .fast()
-    cfg      = JumpCounterConfig()
-    strategy = AnkleStrategy(cfg)
-    provider = MediaPipeLandmarkProvider()
+    base_provider = MediaPipeLandmarkProvider()
+    persons: dict = {}
 
-    jump_flash_left = 0
+    # UI 상태 (dict 사용으로 콜백에서 변경 가능)
+    ui = {"quit": False, "sens_idx": 1}
+    layout: ButtonLayout = make_button_layout(config.FRAME_WIDTH, config.FRAME_HEIGHT)
 
-    def _on_jump(event: JumpEvent) -> None:
-        nonlocal jump_flash_left
-        jump_flash_left = config.JUMP_FLASH_FRAMES
-        # 향후 확장: db.record(event), audio_feedback(event) 등
+    def _rebuild_counters():
+        """민감도 변경 시 모든 카운터를 새 config으로 재생성한다."""
+        _, cfg_cls = _SENS_PRESETS[ui["sens_idx"]]
+        cfg = cfg_cls() if cfg_cls is JumpCounterConfig else cfg_cls()
+        for pid, p in persons.items():
+            def _make_on_jump(p_id: int):
+                def _on_jump(event: JumpEvent) -> None:
+                    persons[p_id]["flash"] = config.JUMP_FLASH_FRAMES
+                return _on_jump
+            p["counter"] = _make_counter(cfg, _make_on_jump(pid))
 
-    counter = JumpCounter(strategy=strategy, config=cfg, on_jump=_on_jump)
+    def _reset_all():
+        for p in persons.values():
+            p["counter"].reset()
+        print("전체 카운터 초기화")
+
+    def on_mouse(event, x, y, flags, param):
+        if event != cv2.EVENT_LBUTTONDOWN:
+            return
+        if layout.hit("reset", x, y):
+            _reset_all()
+        elif layout.hit("sensitivity", x, y):
+            ui["sens_idx"] = (ui["sens_idx"] + 1) % len(_SENS_PRESETS)
+            label, _ = _SENS_PRESETS[ui["sens_idx"]]
+            print(f"민감도 변경: {label}")
+            _rebuild_counters()
+        elif layout.hit("quit", x, y):
+            ui["quit"] = True
+
+    win_name = "AI Jump Rope Analyzer"
+    cv2.namedWindow(win_name)
+    cv2.setMouseCallback(win_name, on_mouse)
 
     prev_time = time.time()
-    report    = None
+    _, initial_cfg_cls = _SENS_PRESETS[ui["sens_idx"]]
+    current_cfg = initial_cfg_cls()
 
-    print("줄넘기 분석 시작 — 'r' 카운터 초기화 / 'q' 종료")
+    print("줄넘기 분석 시작 — 버튼 또는 'r' 리셋 / 'q' 종료")
 
-    while True:
+    while not ui["quit"]:
         ret, frame = cap.read()
         if not ret:
             break
 
         frame = cv2.flip(frame, 1)
-
         results = pose_analyzer.process(frame)
         pose_analyzer.draw_landmarks(frame, results)
 
-        counter.update(provider, results)   # on_jump 콜백이 flash 처리
+        track_results: list[TrackResult] = tracker.update(results)
+        active_ids = {tr.person_id for tr in track_results}
 
-        if results.pose_landmarks:
-            report = posture_analyzer.analyze(results, pose_analyzer)
+        for pid in list(persons.keys()):
+            if pid not in active_ids:
+                del persons[pid]
 
-        flash = jump_flash_left > 0
-        if jump_flash_left > 0:
-            jump_flash_left -= 1
+        _, cfg_cls = _SENS_PRESETS[ui["sens_idx"]]
+        current_cfg = cfg_cls()
+
+        for tr in track_results:
+            pid = tr.person_id
+
+            if pid not in persons:
+                provider = BoundLandmarkProvider(base_provider)
+
+                def _make_on_jump(p_id: int):
+                    def _on_jump(event: JumpEvent) -> None:
+                        persons[p_id]["flash"] = config.JUMP_FLASH_FRAMES
+                    return _on_jump
+
+                persons[pid] = {
+                    "counter":  _make_counter(current_cfg, _make_on_jump(pid)),
+                    "provider": provider,
+                    "report":   None,
+                    "flash":    0,
+                    "centroid": tr.centroid,
+                }
+
+            p = persons[pid]
+            p["centroid"]          = tr.centroid
+            p["provider"].pose_idx = tr.pose_idx
+            p["counter"].update(p["provider"], results)
+            p["report"] = posture_analyzer.analyze(results, pose_analyzer, tr.pose_idx)
+
+            if p["flash"] > 0:
+                p["flash"] -= 1
 
         now       = time.time()
         fps       = 1.0 / (now - prev_time + 1e-6)
         prev_time = now
 
-        draw_hud(frame, counter.count, fps, report, flash)
-        cv2.imshow("AI Jump Rope Analyzer", frame)
+        sens_label, _ = _SENS_PRESETS[ui["sens_idx"]]
+        draw_hud(frame, persons, fps, layout, sens_label)
+        cv2.imshow(win_name, frame)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
         elif key == ord("r"):
-            counter.reset()
-            print("카운터 초기화")
+            _reset_all()
 
     cap.release()
     cv2.destroyAllWindows()
     pose_analyzer.close()
-    print(f"최종 점프 횟수: {counter.count}")
+
+    print("=== 최종 결과 ===")
+    for pid, p in sorted(persons.items()):
+        print(f"  학생 #{pid + 1}: {p['counter'].count}회")
 
 
 if __name__ == "__main__":

@@ -10,34 +10,53 @@ from modules.pose_analyzer import LANDMARK_INDEX, PoseResults
 
 class MediaPipeLandmarkProvider(LandmarkProvider):
     """
-    PoseAnalyzer의 결과를 LandmarkProvider 인터페이스로 노출하는 경량 어댑터.
-
-    설계 의도:
-      - PoseAnalyzer는 MediaPipe 초기화·영상처리·draw 등 렌더링 책임을 유지
-      - 이 어댑터는 "랜드마크 조회" 책임만 담당하며 내부 상태 없음
-      - PoseResults를 공유하므로 데이터 복사 없음
-      - MediaPipe Tasks API 버전 차이는 PoseAnalyzer가 흡수하고
-        이 클래스는 그 결과만 읽음
+    PoseAnalyzer 결과를 LandmarkProvider 인터페이스로 노출하는 경량 어댑터.
+    person_id로 다중 인원 중 특정 포즈를 선택한다.
     """
 
     def get_landmark(
         self,
         results: PoseResults,
         name: LandmarkName,
+        person_id: int = 0,
     ) -> Optional[Landmark]:
-        if results.pose_landmarks is None:
+        if person_id >= len(results.pose_landmarks_list):
             return None
 
+        lms = results.pose_landmarks_list[person_id]
         idx = LANDMARK_INDEX.get(name)
-        if idx is None or idx >= len(results.pose_landmarks):
+        if idx is None or idx >= len(lms):
             return None
 
-        lm = results.pose_landmarks[idx]
+        lm = lms[idx]
         return np.array(
             [lm.x, lm.y, lm.z,
              lm.visibility if hasattr(lm, "visibility") else 1.0],
             dtype=np.float32,
         )
+
+    def get_landmarks(
+        self,
+        results: PoseResults,
+        names: Sequence[LandmarkName],
+        person_id: int = 0,
+    ) -> dict[LandmarkName, Optional[Landmark]]:
+        return {name: self.get_landmark(results, name, person_id) for name in names}
+
+
+class BoundLandmarkProvider(LandmarkProvider):
+    """
+    특정 person의 pose_idx에 바인딩된 제공자.
+    pose_idx는 매 프레임 tracker 결과로 갱신된다.
+    JumpCounter에 1:1로 할당되어 ropemetrics 인터페이스 변경 없이 다중 인원을 지원한다.
+    """
+
+    def __init__(self, base: MediaPipeLandmarkProvider):
+        self._base = base
+        self.pose_idx: int = 0
+
+    def get_landmark(self, results: PoseResults, name: LandmarkName) -> Optional[Landmark]:
+        return self._base.get_landmark(results, name, person_id=self.pose_idx)
 
     def get_landmarks(
         self,
