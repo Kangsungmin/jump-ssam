@@ -2,3 +2,5 @@ mediapipe>=0.10.30
 opencv-python>=4.10.0
 numpy>=1.26.0
 ropemetrics>=0.1.0
+face_recognition>=1.3.0
+Pillow>=10.0.0
