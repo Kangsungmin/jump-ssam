@@ -14,6 +14,15 @@ MODEL_DOWNLOAD_URL    = (
     "pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
 )
 
+# ── 얼굴 감지 ─────────────────────────────────────────────
+FACE_MODEL_PATH       = Path("data/models/face_detector.tflite")
+FACE_CONFIDENCE       = 0.5   # 얼굴 감지 최소 신뢰도
+FACE_POSE_MAP_THRESH  = 0.25  # 얼굴-포즈 매핑 거리 임계값 (정규화 좌표)
+FACE_MODEL_DOWNLOAD_URL = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
+)
+
 # ── 횟수 카운팅 ──────────────────────────────────────────
 JUMP_THRESHOLD    = 0.025   # 발목 Y좌표 변화 임계값 (정규화 좌표)
 MIN_JUMP_FRAMES   = 3       # 최소 점프 인정 프레임 수

@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
-from modules.pose_analyzer import PoseResults
+from modules.pose_analyzer import PoseResults, FaceBox
 
 
 @dataclass
 class TrackResult:
     person_id: int
     pose_idx: int
-    centroid: tuple[float, float]  # 정규화 (x, y)
+    centroid: tuple[float, float]       # 정규화 (x, y)
+    face_box: Optional[FaceBox] = None  # 매핑된 얼굴 box (없으면 None)
 
 
 class _TrackedState:
@@ -118,11 +120,15 @@ class MultiPersonTracker:
             del self._ghosts[pid]
 
         # ── 6. 현재 프레임 감지 대상만 반환 ──────────────────────
-        return [
-            TrackResult(person_id=pid, pose_idx=s.pose_idx, centroid=s.centroid)
-            for pid, s in self._persons.items()
-            if s.miss_frames == 0
-        ]
+        out = []
+        for pid, s in self._persons.items():
+            if s.miss_frames != 0:
+                continue
+            fb = None
+            if s.pose_idx < len(results.face_boxes):
+                fb = results.face_boxes[s.pose_idx]
+            out.append(TrackResult(person_id=pid, pose_idx=s.pose_idx, centroid=s.centroid, face_box=fb))
+        return out
 
 
 def _compute_centroids(results: PoseResults) -> list[tuple[float, float]]:
