@@ -13,9 +13,9 @@ from modules.adapters.mediapipe import MediaPipeLandmarkProvider, BoundLandmarkP
 
 # 민감도 프리셋 순환 목록
 _SENS_PRESETS = [
-    ("느림", JumpCounterConfig.slow),
-    ("기본", JumpCounterConfig),
-    ("빠름", JumpCounterConfig.fast),
+    ("레벨 1", JumpCounterConfig.slow),
+    ("레벨 2", JumpCounterConfig),
+    ("레벨 3", JumpCounterConfig.fast),
 ]
 
 
