@@ -86,8 +86,12 @@ class MultiPersonTracker:
         matched_det: set[int] = set()
 
         # ── 1. 활성 추적 대상 매칭 ───────────────────────────────
+        # miss_frames 오름차순 정렬: 최근 매칭된 인물이 먼저 감지를 선점해
+        # greedy 방식의 연쇄 실패를 줄인다.
         if self._persons and n > 0:
-            for pid, state in self._persons.items():
+            sorted_pids = sorted(self._persons, key=lambda p: self._persons[p].miss_frames)
+            for pid in sorted_pids:
+                state = self._persons[pid]
                 best_idx, best_dist = None, float("inf")
                 for i, c in enumerate(centroids):
                     if i in matched_det:
@@ -142,8 +146,18 @@ class MultiPersonTracker:
             del self._persons[pid]
 
         # ── 4. 미매칭 감지 포즈 → ghost 복원 또는 신규 ID 발급 ───
+        # 이미 매칭된 활성 인물의 centroid 목록 (중복 감지 필터링용)
+        matched_centroids = [self._persons[pid].centroid for pid in matched_pose]
+
         for i, c in enumerate(centroids):
             if i in matched_det:
+                continue
+
+            # 이미 매칭된 활성 인물과 너무 가까우면 동일 인물의 중복 감지로 간주해 무시
+            if any(
+                np.hypot(c[0] - mc[0], c[1] - mc[1]) < config.TRACKER_MIN_PERSON_DIST
+                for mc in matched_centroids
+            ):
                 continue
 
             conf = pose_confs[i] if i < len(pose_confs) else 1.0

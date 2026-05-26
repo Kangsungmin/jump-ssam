@@ -46,7 +46,8 @@ MAX_TRACKED_PERSONS        = 10   # MediaPipe 최대 동시 감지 인원
 TRACKER_MAX_MISS_FRAMES    = 15   # 미감지 허용 프레임 수 (30fps 기준 ~0.5초)
 TRACKER_MATCH_THRESHOLD    = 0.3  # 활성 추적 centroid 매칭 거리 임계값 (정규화 좌표)
 TRACKER_GHOST_EXPIRE_FRAMES = 150 # ghost 보관 프레임 수 (30fps 기준 5초)
-TRACKER_GHOST_MATCH_THRESHOLD = 0.4  # 재등장 매칭 거리 임계값 (정규화 좌표)
+TRACKER_GHOST_MATCH_THRESHOLD = 0.55 # 재등장 매칭 거리 임계값 (정규화 좌표, 관대하게)
+TRACKER_MIN_PERSON_DIST   = 0.15 # 동일 인물 중복 감지 필터 거리 임계값 (정규화 좌표)
 
 # ── 얼굴+신체 융합 식별 ─────────────────────────────────────
 FUSION_WEIGHT_FACE      = 0.4   # 얼굴 임베딩 유사도 가중치
